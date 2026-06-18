@@ -43,7 +43,7 @@ public sealed class ServerRedirectDialog : GuiDialog
 
     private void Compose()
     {
-        const double width = 430;
+        const double width = 260;
         const double titleHeight = 38;
         const double rowHeight = 42;
         const double rowGap = 8;
@@ -90,14 +90,8 @@ public sealed class ServerRedirectDialog : GuiDialog
                         _onRedirectSelected(name);
                         return true;
                     },
-                    ElementBounds.Fixed(18, y, 190, rowHeight),
+                    ElementBounds.Fixed(18, y, width - 36, rowHeight),
                     key: "target-" + i);
-
-                composer.AddStaticText(
-                    host,
-                    bodyFont,
-                    ElementBounds.Fixed(220, y + 10, width - 238, rowHeight - 10),
-                    key: "host-" + i);
 
                 y += rowHeight + rowGap;
             }
