@@ -48,6 +48,7 @@ public sealed class ServerRedirectDialog : GuiDialog
         const double rowHeight = 42;
         const double rowGap = 8;
         const double footerHeight = 54;
+        CairoFont bodyFont = CairoFont.WhiteSmallText();
 
         ClampPage();
         int pageCount = GetPageCount();
@@ -63,15 +64,15 @@ public sealed class ServerRedirectDialog : GuiDialog
 
         GuiComposer composer = capi.Gui.CreateCompo("serverredirectdialog", dialogBounds)
             .AddShadedDialogBG(bgBounds)
-            .AddDialogTitleBar("Server Redirect", OnTitleBarClose)
+            .AddDialogTitleBar(ServerRedirectLang.Get("dialog-title"), OnTitleBarClose)
             .BeginChildElements();
 
         double y = titleHeight + 12;
         if (_entries.Length == 0)
         {
             composer.AddStaticText(
-                "No redirect targets configured.",
-                CairoFont.WhiteSmallText(),
+                ServerRedirectLang.Get("dialog-empty"),
+                bodyFont,
                 ElementBounds.Fixed(18, y + 8, width - 36, rowHeight));
         }
         else
@@ -94,7 +95,7 @@ public sealed class ServerRedirectDialog : GuiDialog
 
                 composer.AddStaticText(
                     host,
-                    CairoFont.WhiteSmallText(),
+                    bodyFont,
                     ElementBounds.Fixed(220, y + 10, width - 238, rowHeight - 10),
                     key: "host-" + i);
 
@@ -105,8 +106,8 @@ public sealed class ServerRedirectDialog : GuiDialog
             {
                 composer.AddSmallButton("<<", OnPreviousPage, ElementBounds.Fixed(18, y, 72, 30), key: "previous-page");
                 composer.AddStaticText(
-                    $"{_page + 1} / {pageCount}",
-                    CairoFont.WhiteSmallText(),
+                    ServerRedirectLang.Get("dialog-page", _page + 1, pageCount),
+                    bodyFont,
                     ElementBounds.Fixed(104, y + 7, width - 208, 26),
                     key: "page-label");
                 composer.AddSmallButton(">>", OnNextPage, ElementBounds.Fixed(width - 90, y, 72, 30), key: "next-page");
@@ -115,7 +116,7 @@ public sealed class ServerRedirectDialog : GuiDialog
         }
 
         composer
-            .AddSmallButton("Refresh", OnRefresh, ElementBounds.Fixed(18, height - 48, 120, 32))
+            .AddSmallButton(ServerRedirectLang.Get("button-refresh"), OnRefresh, ElementBounds.Fixed(18, height - 48, 120, 32))
             .AddSmallButton(Lang.Get("button-close"), OnClose, ElementBounds.Fixed(width - 138, height - 48, 120, 32))
             .EndChildElements();
 

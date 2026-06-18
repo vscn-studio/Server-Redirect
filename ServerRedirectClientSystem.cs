@@ -1,7 +1,6 @@
 using System.Reflection;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
-using Vintagestory.API.Config;
 using Vintagestory.API.Server;
 
 namespace ServerRedirect;
@@ -37,7 +36,7 @@ public sealed class ServerRedirectClientSystem : ModSystem
 
         api.Input.RegisterHotKey(
             HotkeyCode,
-            "Open Server Redirect",
+            ServerRedirectLang.Get("hotkey-open"),
             GlKeys.R,
             HotkeyType.GUIOrOtherControls,
             altPressed: true);
@@ -81,7 +80,7 @@ public sealed class ServerRedirectClientSystem : ModSystem
         }
         else
         {
-            _api?.ShowChatMessage("Server Redirect is not available on this server.");
+            _api?.ShowChatMessage(ServerRedirectLang.Get("chat-unavailable"));
         }
     }
 
@@ -93,7 +92,7 @@ public sealed class ServerRedirectClientSystem : ModSystem
         }
         else
         {
-            _api?.ShowChatMessage("Server Redirect is not available on this server.");
+            _api?.ShowChatMessage(ServerRedirectLang.Get("chat-unavailable"));
         }
     }
 
@@ -109,10 +108,11 @@ public sealed class ServerRedirectClientSystem : ModSystem
             return;
         }
 
-        string host = packet.Host.Trim();
+        string host = packet.Host?.Trim() ?? string.Empty;
+        string name = string.IsNullOrWhiteSpace(packet.Name) ? host : packet.Name.Trim();
         if (string.IsNullOrWhiteSpace(host))
         {
-            _api?.ShowChatMessage("Server Redirect received an empty target.");
+            _api?.ShowChatMessage(ServerRedirectLang.Get("chat-emptytarget"));
             return;
         }
 
@@ -121,16 +121,16 @@ public sealed class ServerRedirectClientSystem : ModSystem
 
         try
         {
-            ICoreClientAPI api = _api ?? throw new InvalidOperationException("Client API is not available.");
-            _api?.ShowChatMessage($"Redirecting to {packet.Name} ({host})...");
+            ICoreClientAPI api = _api ?? throw new InvalidOperationException(ServerRedirectLang.Get("error-clientapi-unavailable"));
+            _api?.ShowChatMessage(ServerRedirectLang.Get("chat-redirecting", name, host));
             api.Event.EnqueueMainThreadTask(
-                () => TrySwitchServerInCurrentClientSafely(host, packet.Name),
+                () => TrySwitchServerInCurrentClientSafely(host, name),
                 "serverredirect-switch");
         }
         catch (Exception ex)
         {
             _redirectInProgress = false;
-            _api?.ShowChatMessage($"Server Redirect failed: {ex.Message}");
+            _api?.ShowChatMessage(ServerRedirectLang.Get("chat-failed", ex.Message));
         }
     }
 
@@ -143,7 +143,7 @@ public sealed class ServerRedirectClientSystem : ModSystem
         catch (Exception ex)
         {
             _redirectInProgress = false;
-            _api?.ShowChatMessage($"Server Redirect failed: {ex.GetBaseException().Message}");
+            _api?.ShowChatMessage(ServerRedirectLang.Get("chat-failed", ex.GetBaseException().Message));
         }
     }
 
@@ -152,7 +152,7 @@ public sealed class ServerRedirectClientSystem : ModSystem
         object? clientMain = _api?.World;
         if (clientMain is null)
         {
-            throw new InvalidOperationException("Could not access the current Vintage Story client.");
+            throw new InvalidOperationException(ServerRedirectLang.Get("error-clientapi-unavailable"));
         }
 
         Type clientType = clientMain.GetType();
@@ -170,7 +170,7 @@ public sealed class ServerRedirectClientSystem : ModSystem
 
         if (sendLeave is null || destroySession is null || redirectField is null)
         {
-            throw new InvalidOperationException("Could not find Vintage Story's client session methods.");
+            throw new InvalidOperationException(ServerRedirectLang.Get("error-clientmethods-missing"));
         }
 
         var entry = new MultiplayerServerEntry

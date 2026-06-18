@@ -40,20 +40,20 @@ public sealed class ServerRedirectServerSystem : ModSystem
     {
         CommandArgumentParsers parsers = api.ChatCommands.Parsers;
         api.ChatCommands.Create(Command)
-            .WithDescription("Manage the server redirect list")
+            .WithDescription(ServerRedirectLang.Get("command-manage-desc"))
             .RequiresPrivilege(Privilege)
             .BeginSubCommand("add")
-                .WithDescription("Add or replace a redirect target")
+                .WithDescription(ServerRedirectLang.Get("command-add-desc"))
                 .WithArgs(parsers.Word("host:port"), parsers.All("name"))
                 .HandleWith(AddRedirect)
             .EndSubCommand()
             .BeginSubCommand("del")
-                .WithDescription("Delete a redirect target by name, or by host:port and name")
+                .WithDescription(ServerRedirectLang.Get("command-del-desc"))
                 .WithArgs(parsers.All("name or host:port name"))
                 .HandleWith(DeleteRedirect)
             .EndSubCommand()
             .BeginSubCommand("list")
-                .WithDescription("List all redirect targets")
+                .WithDescription(ServerRedirectLang.Get("command-list-desc"))
                 .HandleWith(ListRedirects);
     }
 
@@ -62,7 +62,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
         string host = (string)args[0];
         string name = (string)args[1];
 
-        if (!NormalizeHost(ref host, out var error))
+        if (!NormalizeHost(ref host, args.LanguageCode, out var error))
         {
             return TextCommandResult.Error(error);
         }
@@ -70,7 +70,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
         name = name.Trim();
         if (string.IsNullOrWhiteSpace(name))
         {
-            return TextCommandResult.Error("Missing redirect name.");
+            return TextCommandResult.Error(ServerRedirectLang.GetFor(args.LanguageCode, "error-missing-name"));
         }
 
         int existingIndex = Array.FindIndex(_config.Entries, entry => string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase));
@@ -87,7 +87,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
         SortEntries();
         SaveConfig();
         BroadcastList();
-        return TextCommandResult.Success($"Redirect '{name}' -> {host} saved.");
+        return TextCommandResult.Success(ServerRedirectLang.GetFor(args.LanguageCode, "result-saved", name, host));
     }
 
     private TextCommandResult DeleteRedirect(TextCommandCallingArgs args)
@@ -95,13 +95,13 @@ public sealed class ServerRedirectServerSystem : ModSystem
         string input = ((string)args[0]).Trim();
         if (string.IsNullOrWhiteSpace(input))
         {
-            return TextCommandResult.Error("Missing redirect name.");
+            return TextCommandResult.Error(ServerRedirectLang.GetFor(args.LanguageCode, "error-missing-name"));
         }
 
         ServerRedirectEntry? entry = FindEntryForDelete(input);
         if (entry is null)
         {
-            return TextCommandResult.Error($"No redirect target matching '{input}' exists.");
+            return TextCommandResult.Error(ServerRedirectLang.GetFor(args.LanguageCode, "error-not-found-input", input));
         }
 
         _config.Entries = _config.Entries
@@ -110,14 +110,14 @@ public sealed class ServerRedirectServerSystem : ModSystem
 
         SaveConfig();
         BroadcastList();
-        return TextCommandResult.Success($"Redirect '{entry.Name}' -> {entry.Host} deleted.");
+        return TextCommandResult.Success(ServerRedirectLang.GetFor(args.LanguageCode, "result-deleted", entry.Name, entry.Host));
     }
 
     private TextCommandResult ListRedirects(TextCommandCallingArgs args)
     {
         if (_config.Entries.Length == 0)
         {
-            return TextCommandResult.Success("No redirect targets configured.");
+            return TextCommandResult.Success(ServerRedirectLang.GetFor(args.LanguageCode, "result-empty-list"));
         }
 
         string lines = string.Join("\n", _config.Entries.Select(entry => $"{entry.Name} -> {entry.Host}"));
@@ -131,11 +131,14 @@ public sealed class ServerRedirectServerSystem : ModSystem
 
     private void OnSelectRequest(IServerPlayer fromPlayer, ServerRedirectSelectRequest message)
     {
-        string name = message.Name.Trim();
+        string name = message.Name?.Trim() ?? string.Empty;
         ServerRedirectEntry? entry = _config.Entries.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
         if (entry is null)
         {
-            fromPlayer.SendMessage(GlobalConstants.GeneralChatGroup, $"No redirect named '{name}' exists.", EnumChatType.CommandError);
+            fromPlayer.SendMessage(
+                GlobalConstants.GeneralChatGroup,
+                ServerRedirectLang.GetFor(fromPlayer.LanguageCode, "error-no-redirect-named", name),
+                EnumChatType.CommandError);
             SendList(fromPlayer);
             return;
         }
@@ -146,7 +149,10 @@ public sealed class ServerRedirectServerSystem : ModSystem
             return;
         }
 
-        fromPlayer.SendMessage(GlobalConstants.GeneralChatGroup, $"Redirect failed: {error}", EnumChatType.CommandError);
+        fromPlayer.SendMessage(
+            GlobalConstants.GeneralChatGroup,
+            ServerRedirectLang.GetFor(fromPlayer.LanguageCode, "error-redirect-failed", error),
+            EnumChatType.CommandError);
     }
 
     private void SendList(IServerPlayer player)
@@ -176,7 +182,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
     {
         if (_channel is null)
         {
-            error = "Network channel is not ready.";
+            error = ServerRedirectLang.GetFor(player.LanguageCode, "error-channel-not-ready");
             return false;
         }
 
@@ -269,7 +275,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
 
         string host = input[..separator];
         string name = input[(separator + 1)..].Trim();
-        if (string.IsNullOrWhiteSpace(name) || !NormalizeHost(ref host, out _))
+        if (string.IsNullOrWhiteSpace(name) || !NormalizeHost(ref host, languageCode: null, out _))
         {
             return null;
         }
@@ -279,7 +285,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
             && string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static bool NormalizeHost(ref string host, out string error)
+    private static bool NormalizeHost(ref string host, string? languageCode, out string error)
     {
         host = host.Trim();
         if (host.StartsWith("vintagestoryjoin://", StringComparison.OrdinalIgnoreCase))
@@ -290,7 +296,9 @@ public sealed class ServerRedirectServerSystem : ModSystem
         host = host.TrimEnd('/');
         if (host.Length == 0 || host.Any(char.IsWhiteSpace))
         {
-            error = "Invalid host. Use host:port.";
+            error = languageCode is null
+                ? ServerRedirectLang.Get("error-invalid-host")
+                : ServerRedirectLang.GetFor(languageCode, "error-invalid-host");
             return false;
         }
 
