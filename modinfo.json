@@ -1,0 +1,11 @@
+{
+  "type": "code",
+  "modid": "serverredirect",
+  "name": "Server Redirect",
+  "authors": [ "VSCN-Studio" ],
+  "description": "Adds an Alt+R server redirect window backed by an admin-managed redirect list.",
+  "version": "1.0.0",
+  "side": "universal",
+  "requiredOnClient": true,
+  "requiredOnServer": true
+}

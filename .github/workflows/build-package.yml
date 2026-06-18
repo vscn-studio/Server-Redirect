@@ -1,0 +1,94 @@
+name: Build Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Mod version, for example 1.0.0"
+        required: true
+        default: "1.0.0"
+      vintage_story_version:
+        description: "Vintage Story version used for compile references"
+        required: true
+        default: "1.22.3"
+
+jobs:
+  build:
+    name: Build mod zip
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Normalize version
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          VERSION="${VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: ${{ inputs.version }}"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Download Vintage Story server references
+        shell: bash
+        run: |
+          VS_VERSION="${{ inputs.vintage_story_version }}"
+          VS_URL="https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_VERSION}.tar.gz"
+          ARCHIVE="$RUNNER_TEMP/vs-server.tar.gz"
+          EXTRACT_DIR="$RUNNER_TEMP/vs-server"
+
+          curl --fail --location "$VS_URL" --output "$ARCHIVE"
+          mkdir -p "$EXTRACT_DIR"
+          tar -xzf "$ARCHIVE" -C "$EXTRACT_DIR"
+
+          VS_ROOT="$(find "$EXTRACT_DIR" -name VintagestoryAPI.dll -printf '%h\n' -quit)"
+          if [ -z "$VS_ROOT" ]; then
+            echo "Could not find VintagestoryAPI.dll in downloaded Vintage Story server package."
+            exit 1
+          fi
+
+          echo "VINTAGE_STORY=$VS_ROOT" >> "$GITHUB_ENV"
+          echo "Using Vintage Story references from $VS_ROOT"
+
+      - name: Update modinfo version
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("modinfo.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          data["version"] = os.environ["VERSION"]
+          path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+          PY
+
+      - name: Publish
+        shell: bash
+        run: |
+          dotnet publish ServerRedirect.csproj \
+            --configuration Release \
+            --output "$RUNNER_TEMP/package/serverredirect"
+
+      - name: Create zip
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cd "$RUNNER_TEMP/package/serverredirect"
+          zip -r "$GITHUB_WORKSPACE/artifacts/serverredirect-${VERSION}.zip" .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: serverredirect-${{ env.VERSION }}
+          path: artifacts/serverredirect-${{ env.VERSION }}.zip
+          if-no-files-found: error
