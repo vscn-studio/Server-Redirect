@@ -33,12 +33,16 @@ public sealed class ServerRedirectClientSystem : ModSystem
         _dialog = new ServerRedirectDialog(api, RequestRedirect, RequestList);
         api.Gui.RegisterDialog(_dialog);
 
-        api.Input.RegisterHotKey(
-            ServerRedirectDialog.HotkeyCode,
-            ServerRedirectLang.Get("hotkey-open"),
-            GlKeys.R,
-            HotkeyType.GUIOrOtherControls,
-            altPressed: true);
+        if (api.Input.GetHotKeyByCode(ServerRedirectDialog.HotkeyCode) is null)
+        {
+            api.Input.RegisterHotKey(
+                ServerRedirectDialog.HotkeyCode,
+                ServerRedirectLang.Get("hotkey-open"),
+                GlKeys.R,
+                HotkeyType.GUIOrOtherControls,
+                altPressed: true);
+        }
+
         api.Input.SetHotKeyHandler(ServerRedirectDialog.HotkeyCode, OnHotkey);
     }
 
@@ -157,17 +161,25 @@ public sealed class ServerRedirectClientSystem : ModSystem
 
         Type clientType = clientMain.GetType();
         MethodInfo? sendLeave = clientType.GetMethod("SendLeave", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        MethodInfo? exitAndSwitchServer = clientType.GetMethod(
-            "ExitAndSwitchServer",
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-            binder: null,
-            types: [typeof(MultiplayerServerEntry)],
-            modifiers: null);
+        MethodInfo? destroySession = clientType
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .FirstOrDefault(method =>
+            {
+                if (method.Name != "DestroyGameSession")
+                {
+                    return false;
+                }
+
+                ParameterInfo[] parameters = method.GetParameters();
+                return parameters.Length >= 1
+                    && parameters.Length <= 2
+                    && parameters[0].ParameterType == typeof(bool);
+            });
         FieldInfo? redirectField = clientType.GetField("RedirectTo", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo? exitReasonField = clientType.GetField("exitReason", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        FieldInfo? exitToMainMenuField = clientType.GetField("exitToMainMenu", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        FieldInfo? exitToDisconnectScreenField = clientType.GetField("exitToDisconnectScreen", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
-        if (sendLeave is null || (exitAndSwitchServer is null && redirectField is null))
+        if (sendLeave is null || destroySession is null || redirectField is null)
         {
             throw new InvalidOperationException(ServerRedirectLang.Get("error-clientmethods-missing"));
         }
@@ -188,14 +200,32 @@ public sealed class ServerRedirectClientSystem : ModSystem
             // The server may already be closing the channel. Continue with local teardown.
         }
 
-        if (exitAndSwitchServer is not null)
+        exitReasonField?.SetValue(clientMain, "server redirect");
+        exitToDisconnectScreenField?.SetValue(clientMain, false);
+        InvokeDestroySession(destroySession, clientMain);
+        redirectField.SetValue(clientMain, entry);
+    }
+
+    private static void InvokeDestroySession(MethodInfo destroySession, object clientMain)
+    {
+        ParameterInfo[] parameters = destroySession.GetParameters();
+        if (parameters.Length == 1)
         {
-            exitAndSwitchServer.Invoke(clientMain, [entry]);
+            destroySession.Invoke(clientMain, [false]);
             return;
         }
 
-        exitReasonField?.SetValue(clientMain, "server redirect");
-        exitToMainMenuField?.SetValue(clientMain, true);
-        redirectField?.SetValue(clientMain, entry);
+        object softExit = GetSoftExitValue(parameters[1].ParameterType);
+        destroySession.Invoke(clientMain, [false, softExit]);
+    }
+
+    private static object GetSoftExitValue(Type exitModeType)
+    {
+        if (exitModeType.IsEnum)
+        {
+            return Enum.Parse(exitModeType, "SoftExit");
+        }
+
+        return exitModeType.IsValueType ? Activator.CreateInstance(exitModeType)! : null!;
     }
 }
