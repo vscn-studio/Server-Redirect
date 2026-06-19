@@ -44,12 +44,12 @@ public sealed class ServerRedirectServerSystem : ModSystem
             .RequiresPrivilege(Privilege)
             .BeginSubCommand("add")
                 .WithDescription(ServerRedirectLang.Get("command-add-desc"))
-                .WithArgs(parsers.Word("host:port"), parsers.All("name"))
+                .WithArgs(parsers.Word("host:port"), parsers.Word("password"), parsers.All("name"))
                 .HandleWith(AddRedirect)
             .EndSubCommand()
             .BeginSubCommand("del")
                 .WithDescription(ServerRedirectLang.Get("command-del-desc"))
-                .WithArgs(parsers.All("name or host:port name"))
+                .WithArgs(parsers.Word("host:port"), parsers.Word("password"), parsers.All("name"))
                 .HandleWith(DeleteRedirect)
             .EndSubCommand()
             .BeginSubCommand("list")
@@ -60,7 +60,8 @@ public sealed class ServerRedirectServerSystem : ModSystem
     private TextCommandResult AddRedirect(TextCommandCallingArgs args)
     {
         string host = (string)args[0];
-        string name = (string)args[1];
+        string password = NormalizePassword((string)args[1]);
+        string name = (string)args[2];
 
         if (!NormalizeHost(ref host, args.LanguageCode, out var error))
         {
@@ -74,7 +75,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
         }
 
         int existingIndex = Array.FindIndex(_config.Entries, entry => string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase));
-        var entry = new ServerRedirectEntry { Host = host, Name = name };
+        var entry = new ServerRedirectEntry { Host = host, Password = password, Name = name };
         if (existingIndex >= 0)
         {
             _config.Entries[existingIndex] = entry;
@@ -92,16 +93,27 @@ public sealed class ServerRedirectServerSystem : ModSystem
 
     private TextCommandResult DeleteRedirect(TextCommandCallingArgs args)
     {
-        string input = ((string)args[0]).Trim();
-        if (string.IsNullOrWhiteSpace(input))
+        string host = (string)args[0];
+        string password = NormalizePassword((string)args[1]);
+        string name = ((string)args[2]).Trim();
+
+        if (!NormalizeHost(ref host, args.LanguageCode, out var error))
+        {
+            return TextCommandResult.Error(error);
+        }
+
+        if (string.IsNullOrWhiteSpace(name))
         {
             return TextCommandResult.Error(ServerRedirectLang.GetFor(args.LanguageCode, "error-missing-name"));
         }
 
-        ServerRedirectEntry? entry = FindEntryForDelete(input);
+        ServerRedirectEntry? entry = _config.Entries.FirstOrDefault(item =>
+            string.Equals(item.Host, host, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(item.Password, password, StringComparison.Ordinal)
+            && string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
         if (entry is null)
         {
-            return TextCommandResult.Error(ServerRedirectLang.GetFor(args.LanguageCode, "error-not-found-input", input));
+            return TextCommandResult.Error(ServerRedirectLang.GetFor(args.LanguageCode, "error-not-found-input", $"{host} {args[1]} {name}"));
         }
 
         _config.Entries = _config.Entries
@@ -120,7 +132,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
             return TextCommandResult.Success(ServerRedirectLang.GetFor(args.LanguageCode, "result-empty-list"));
         }
 
-        string lines = string.Join("\n", _config.Entries.Select(entry => $"{entry.Name} -> {entry.Host}"));
+        string lines = string.Join("\n", _config.Entries.Select(entry => $"{entry.Name} -> {entry.Host}{(string.IsNullOrEmpty(entry.Password) ? "" : " [password]")}"));
         return TextCommandResult.Success(lines);
     }
 
@@ -143,7 +155,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
             return;
         }
 
-        if (TryRedirect(fromPlayer, entry.Host, entry.Name, out var error))
+        if (TryRedirect(fromPlayer, entry.Host, entry.Password, entry.Name, out var error))
         {
             _api?.Logger.Notification("Redirecting {0} to {1} ({2})", fromPlayer.PlayerName, entry.Host, entry.Name);
             return;
@@ -178,7 +190,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
             .ToArray();
     }
 
-    private bool TryRedirect(IServerPlayer player, string host, string name, out string error)
+    private bool TryRedirect(IServerPlayer player, string host, string password, string name, out string error)
     {
         if (_channel is null)
         {
@@ -192,6 +204,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
                 new ServerRedirectExecutePacket
                 {
                     Host = host,
+                    Password = password,
                     Name = name
                 },
                 player);
@@ -215,7 +228,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
             {
                 config.Entries = config.Entries
                     .Where(entry => !string.IsNullOrWhiteSpace(entry.Host) && !string.IsNullOrWhiteSpace(entry.Name))
-                    .Select(entry => new ServerRedirectEntry { Host = entry.Host.Trim(), Name = entry.Name.Trim() })
+                    .Select(entry => new ServerRedirectEntry { Host = entry.Host.Trim(), Password = NormalizePassword(entry.Password), Name = entry.Name.Trim() })
                     .ToArray();
                 _config = config;
                 SortEntries();
@@ -257,32 +270,10 @@ public sealed class ServerRedirectServerSystem : ModSystem
             .ToArray();
     }
 
-    private ServerRedirectEntry? FindEntryForDelete(string input)
+    private static string NormalizePassword(string? password)
     {
-        ServerRedirectEntry? byName = _config.Entries
-            .FirstOrDefault(entry => string.Equals(entry.Name, input, StringComparison.OrdinalIgnoreCase));
-
-        if (byName is not null)
-        {
-            return byName;
-        }
-
-        int separator = input.IndexOf(' ');
-        if (separator < 0)
-        {
-            return null;
-        }
-
-        string host = input[..separator];
-        string name = input[(separator + 1)..].Trim();
-        if (string.IsNullOrWhiteSpace(name) || !NormalizeHost(ref host, languageCode: null, out _))
-        {
-            return null;
-        }
-
-        return _config.Entries.FirstOrDefault(entry =>
-            string.Equals(entry.Host, host, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase));
+        password = password?.Trim() ?? string.Empty;
+        return password == "-" ? string.Empty : password;
     }
 
     private static bool NormalizeHost(ref string host, string? languageCode, out string error)

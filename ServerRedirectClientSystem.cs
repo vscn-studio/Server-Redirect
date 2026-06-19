@@ -8,7 +8,6 @@ namespace ServerRedirect;
 public sealed class ServerRedirectClientSystem : ModSystem
 {
     private const string ChannelName = "serverredirect";
-    private const string HotkeyCode = "serverredirect-window";
 
     private ICoreClientAPI? _api;
     private IClientNetworkChannel? _channel;
@@ -35,12 +34,12 @@ public sealed class ServerRedirectClientSystem : ModSystem
         api.Gui.RegisterDialog(_dialog);
 
         api.Input.RegisterHotKey(
-            HotkeyCode,
+            ServerRedirectDialog.HotkeyCode,
             ServerRedirectLang.Get("hotkey-open"),
             GlKeys.R,
             HotkeyType.GUIOrOtherControls,
             altPressed: true);
-        api.Input.SetHotKeyHandler(HotkeyCode, OnHotkey);
+        api.Input.SetHotKeyHandler(ServerRedirectDialog.HotkeyCode, OnHotkey);
     }
 
     public override void Dispose()
@@ -109,6 +108,7 @@ public sealed class ServerRedirectClientSystem : ModSystem
         }
 
         string host = packet.Host?.Trim() ?? string.Empty;
+        string password = packet.Password?.Trim() ?? string.Empty;
         string name = string.IsNullOrWhiteSpace(packet.Name) ? host : packet.Name.Trim();
         if (string.IsNullOrWhiteSpace(host))
         {
@@ -124,7 +124,7 @@ public sealed class ServerRedirectClientSystem : ModSystem
             ICoreClientAPI api = _api ?? throw new InvalidOperationException(ServerRedirectLang.Get("error-clientapi-unavailable"));
             _api?.ShowChatMessage(ServerRedirectLang.Get("chat-redirecting", name, host));
             api.Event.EnqueueMainThreadTask(
-                () => TrySwitchServerInCurrentClientSafely(host, name),
+                () => TrySwitchServerInCurrentClientSafely(host, password, name),
                 "serverredirect-switch");
         }
         catch (Exception ex)
@@ -134,11 +134,11 @@ public sealed class ServerRedirectClientSystem : ModSystem
         }
     }
 
-    private void TrySwitchServerInCurrentClientSafely(string host, string name)
+    private void TrySwitchServerInCurrentClientSafely(string host, string password, string name)
     {
         try
         {
-            TrySwitchServerInCurrentClient(host, name);
+            TrySwitchServerInCurrentClient(host, password, name);
         }
         catch (Exception ex)
         {
@@ -147,7 +147,7 @@ public sealed class ServerRedirectClientSystem : ModSystem
         }
     }
 
-    private void TrySwitchServerInCurrentClient(string host, string name)
+    private void TrySwitchServerInCurrentClient(string host, string password, string name)
     {
         object? clientMain = _api?.World;
         if (clientMain is null)
@@ -157,18 +157,17 @@ public sealed class ServerRedirectClientSystem : ModSystem
 
         Type clientType = clientMain.GetType();
         MethodInfo? sendLeave = clientType.GetMethod("SendLeave", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        MethodInfo? destroySession = clientType.GetMethod(
-            "DestroyGameSession",
+        MethodInfo? exitAndSwitchServer = clientType.GetMethod(
+            "ExitAndSwitchServer",
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             binder: null,
-            types: [typeof(bool), typeof(EnumExitMode)],
+            types: [typeof(MultiplayerServerEntry)],
             modifiers: null);
         FieldInfo? redirectField = clientType.GetField("RedirectTo", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo? exitReasonField = clientType.GetField("exitReason", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         FieldInfo? exitToMainMenuField = clientType.GetField("exitToMainMenu", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        FieldInfo? exitToDisconnectScreenField = clientType.GetField("exitToDisconnectScreen", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
-        if (sendLeave is null || destroySession is null || redirectField is null)
+        if (sendLeave is null || (exitAndSwitchServer is null && redirectField is null))
         {
             throw new InvalidOperationException(ServerRedirectLang.Get("error-clientmethods-missing"));
         }
@@ -176,6 +175,7 @@ public sealed class ServerRedirectClientSystem : ModSystem
         var entry = new MultiplayerServerEntry
         {
             host = host,
+            password = password,
             name = name
         };
 
@@ -188,10 +188,14 @@ public sealed class ServerRedirectClientSystem : ModSystem
             // The server may already be closing the channel. Continue with local teardown.
         }
 
+        if (exitAndSwitchServer is not null)
+        {
+            exitAndSwitchServer.Invoke(clientMain, [entry]);
+            return;
+        }
+
         exitReasonField?.SetValue(clientMain, "server redirect");
-        exitToMainMenuField?.SetValue(clientMain, false);
-        exitToDisconnectScreenField?.SetValue(clientMain, false);
-        destroySession.Invoke(clientMain, [false, EnumExitMode.SoftExit]);
-        redirectField.SetValue(clientMain, entry);
+        exitToMainMenuField?.SetValue(clientMain, true);
+        redirectField?.SetValue(clientMain, entry);
     }
 }

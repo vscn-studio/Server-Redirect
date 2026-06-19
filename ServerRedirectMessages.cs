@@ -20,6 +20,9 @@ public sealed class ServerRedirectExecutePacket
 
     [ProtoBuf.ProtoMember(2)]
     public string Name { get; set; } = string.Empty;
+
+    [ProtoBuf.ProtoMember(3)]
+    public string Password { get; set; } = string.Empty;
 }
 
 [ProtoBuf.ProtoContract]
@@ -37,4 +40,7 @@ public sealed class ServerRedirectEntry
 
     [ProtoBuf.ProtoMember(2)]
     public string Name { get; set; } = string.Empty;
+
+    [ProtoBuf.ProtoMember(3)]
+    public string Password { get; set; } = string.Empty;
 }

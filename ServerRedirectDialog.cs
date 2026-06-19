@@ -5,6 +5,8 @@ namespace ServerRedirect;
 
 public sealed class ServerRedirectDialog : GuiDialog
 {
+    public const string HotkeyCode = "serverredirect-window";
+
     private const int PageSize = 9;
 
     private readonly Action<string> _onRedirectSelected;
@@ -12,7 +14,7 @@ public sealed class ServerRedirectDialog : GuiDialog
     private ServerRedirectEntry[] _entries = [];
     private int _page;
 
-    public override string ToggleKeyCombinationCode => string.Empty;
+    public override string ToggleKeyCombinationCode => HotkeyCode;
     public override bool DisableMouseGrab => true;
 
     public ServerRedirectDialog(ICoreClientAPI capi, Action<string> onRedirectSelected, Action onRefreshRequested)

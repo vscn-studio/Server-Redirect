@@ -15,23 +15,21 @@ Press `Alt+R` in game to open the redirect window. Click a configured target nam
 Requires the `controlserver` privilege.
 
 ```text
-/serverredirect add <host:port> <name>
-/serverredirect del <name>
-/serverredirect del <host:port> <name>
+/serverredirect add <host:port> <password> <name>
+/serverredirect del <host:port> <password> <name>
 /serverredirect list
 ```
 
 Examples:
 
 ```text
-/serverredirect add hub.example.com:42420 Hub
-/serverredirect add survival.example.com:42420 Survival
-/serverredirect del Hub
-/serverredirect del survival.example.com:42420 Survival
+/serverredirect add hub.example.com:42420 - Hub
+/serverredirect add survival.example.com:42420 secret Survival
+/serverredirect del survival.example.com:42420 secret Survival
 /serverredirect list
 ```
 
-`host:port` may also be a `vintagestoryjoin://` link. The mod strips that prefix before saving the redirect target.
+`host:port` may also be a `vintagestoryjoin://` link. The mod strips that prefix before saving the redirect target. Use `-` as the password for servers without a password. Passwords cannot contain spaces.
 
 ## Config
 
@@ -39,7 +37,13 @@ The server config file is `ModConfig/serverredirect.json`.
 
 ```json
 {
-  "entries": []
+  "entries": [
+    {
+      "host": "survival.example.com:42420",
+      "password": "secret",
+      "name": "Survival"
+    }
+  ]
 }
 ```
 
