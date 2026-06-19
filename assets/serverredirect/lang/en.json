@@ -12,7 +12,7 @@
   "serverredirect:error-clientmethods-missing": "Could not find Vintage Story's client session methods.",
   "serverredirect:command-manage-desc": "Manage the server redirect list",
   "serverredirect:command-add-desc": "Add or replace a redirect target with its server password",
-  "serverredirect:command-del-desc": "Delete a redirect target by host:port, password, and name",
+  "serverredirect:command-del-desc": "Delete a redirect target by name or host:port",
   "serverredirect:command-list-desc": "List all redirect targets",
   "serverredirect:error-missing-name": "Missing redirect name.",
   "serverredirect:error-invalid-host": "Invalid host. Use host:port.",

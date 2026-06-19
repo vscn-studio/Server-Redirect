@@ -49,7 +49,7 @@ public sealed class ServerRedirectServerSystem : ModSystem
             .EndSubCommand()
             .BeginSubCommand("del")
                 .WithDescription(ServerRedirectLang.Get("command-del-desc"))
-                .WithArgs(parsers.Word("host:port"), parsers.Word("password"), parsers.All("name"))
+                .WithArgs(parsers.All("name or host:port"))
                 .HandleWith(DeleteRedirect)
             .EndSubCommand()
             .BeginSubCommand("list")
@@ -93,27 +93,16 @@ public sealed class ServerRedirectServerSystem : ModSystem
 
     private TextCommandResult DeleteRedirect(TextCommandCallingArgs args)
     {
-        string host = (string)args[0];
-        string password = NormalizePassword((string)args[1]);
-        string name = ((string)args[2]).Trim();
-
-        if (!NormalizeHost(ref host, args.LanguageCode, out var error))
-        {
-            return TextCommandResult.Error(error);
-        }
-
-        if (string.IsNullOrWhiteSpace(name))
+        string input = ((string)args[0]).Trim();
+        if (string.IsNullOrWhiteSpace(input))
         {
             return TextCommandResult.Error(ServerRedirectLang.GetFor(args.LanguageCode, "error-missing-name"));
         }
 
-        ServerRedirectEntry? entry = _config.Entries.FirstOrDefault(item =>
-            string.Equals(item.Host, host, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(item.Password, password, StringComparison.Ordinal)
-            && string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+        ServerRedirectEntry? entry = FindEntryForDelete(input);
         if (entry is null)
         {
-            return TextCommandResult.Error(ServerRedirectLang.GetFor(args.LanguageCode, "error-not-found-input", $"{host} {args[1]} {name}"));
+            return TextCommandResult.Error(ServerRedirectLang.GetFor(args.LanguageCode, "error-not-found-input", input));
         }
 
         _config.Entries = _config.Entries
@@ -268,6 +257,26 @@ public sealed class ServerRedirectServerSystem : ModSystem
         _config.Entries = _config.Entries
             .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private ServerRedirectEntry? FindEntryForDelete(string input)
+    {
+        ServerRedirectEntry? byName = _config.Entries
+            .FirstOrDefault(entry => string.Equals(entry.Name, input, StringComparison.OrdinalIgnoreCase));
+
+        if (byName is not null)
+        {
+            return byName;
+        }
+
+        string host = input;
+        if (!NormalizeHost(ref host, languageCode: null, out _))
+        {
+            return null;
+        }
+
+        return _config.Entries
+            .FirstOrDefault(entry => string.Equals(entry.Host, host, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizePassword(string? password)

@@ -16,7 +16,8 @@ Requires the `controlserver` privilege.
 
 ```text
 /serverredirect add <host:port> <password> <name>
-/serverredirect del <host:port> <password> <name>
+/serverredirect del <name>
+/serverredirect del <host:port>
 /serverredirect list
 ```
 
@@ -25,7 +26,8 @@ Examples:
 ```text
 /serverredirect add hub.example.com:42420 - Hub
 /serverredirect add survival.example.com:42420 secret Survival
-/serverredirect del survival.example.com:42420 secret Survival
+/serverredirect del Survival
+/serverredirect del hub.example.com:42420
 /serverredirect list
 ```
 
